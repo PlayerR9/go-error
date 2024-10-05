@@ -1,6 +1,9 @@
 package errs
 
-import "reflect"
+import (
+	"io"
+	"reflect"
+)
 
 var (
 	// _FaultType is the reflect type of Fault interface.
@@ -70,4 +73,23 @@ func Traverse(fault Fault, fn func(fault Fault) bool) bool {
 	}
 
 	return false
+}
+
+func WriteString(w io.Writer, str string) error {
+	if str == "" {
+		return nil
+	} else if w == nil {
+		return io.ErrShortWrite
+	}
+
+	data := []byte(str)
+
+	n, err := w.Write(data)
+	if err != nil {
+		return err
+	} else if n != len(data) {
+		return io.ErrShortWrite
+	}
+
+	return nil
 }

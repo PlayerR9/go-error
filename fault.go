@@ -1,25 +1,37 @@
 package errs
 
-import "reflect"
-
-// FaultCode is the interface that all error codes should implement.
-type FaultCode interface {
-	~int
-
-	// String returns the string representation of the error code.
-	//
-	// Returns:
-	//   - string: The string representation of the error code.
-	String() string
-}
+import (
+	"io"
+	"reflect"
+)
 
 // Fault is the interface that all errors should implement.
 type Fault interface {
+	// WriteInfo writes the error information to the writer. This excludes anything that
+	// Error() returns.
+	//
+	// Parameters:
+	//   - w: The writer to write the error information to. Assumed to be not nil.
+	//
+	// Returns:
+	//   - error: The error that occurred while writing the information.
+	WriteInfo(w io.Writer) Fault
+
 	// Error returns the string representation of the error.
 	//
 	// Returns:
 	//   - string: The string representation of the error.
 	Error() string
+}
+
+func FromError[C FaultCode](code C, err error) Fault {
+	var msg string
+
+	if err != nil {
+		msg = err.Error()
+	}
+
+	return New(code, msg)
 }
 
 func Is(fault Fault, target Fault) bool {

@@ -2,7 +2,15 @@ package errs
 
 import "io"
 
-func WriteFault(w io.Writer, fault Fault) error {
+var (
+	ErrShortWrite Fault
+)
+
+func init() {
+	ErrShortWrite = New(OperationFail, "short write")
+}
+
+func WriteFault(w io.Writer, fault Fault) Fault {
 	if fault == nil {
 		return nil
 	}
@@ -11,14 +19,14 @@ func WriteFault(w io.Writer, fault Fault) error {
 	if len(data) == 0 {
 		return nil
 	} else if w == nil {
-		return io.ErrShortWrite
+		return ErrShortWrite
 	}
 
 	n, err := w.Write(data)
 	if err != nil {
-		return err
+		return FromError(OperationFail, err)
 	} else if n != len(data) {
-		return io.ErrShortWrite
+		return ErrShortWrite
 	}
 
 	return nil
