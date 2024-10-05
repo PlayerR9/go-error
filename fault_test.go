@@ -19,31 +19,8 @@ func (m MockType) Error() string {
 	return "(mock) some error"
 }
 
-func (m *MockType) As(target any) bool {
-	return false
-}
-
-func TestAsSuccess(t *testing.T) {
-	const (
-		ExpectedStr string = "(mock) some error"
-	)
-
-	err := &MockType{}
-
-	var target *MockType
-
-	ok := As(err, target)
-	if !ok {
-		t.Fatalf("As() = %v, want %v", ok, true)
-	}
-
-	// if target == nil {
-	// 	t.Fatalf("As() = %v, want %v", target, true)
-	// }
-
-	if target.Error() != ExpectedStr {
-		t.Errorf("As() = %v, want %v", target, ExpectedStr)
-	}
+func (m MockType) Is(target Fault) bool {
+	return m.Error() == target.Error()
 }
 
 func TestAs(t *testing.T) {
@@ -51,7 +28,7 @@ func TestAs(t *testing.T) {
 		ExpectedStr string = "(mock) some error"
 	)
 
-	err := New(MockCode1, "some error")
+	err := &MockType{}
 
 	var target *MockType
 
@@ -66,5 +43,22 @@ func TestAs(t *testing.T) {
 
 	if target.Error() != ExpectedStr {
 		t.Errorf("As() = %v, want %v", target, ExpectedStr)
+	}
+}
+
+func TestIs(t *testing.T) {
+	const (
+		ExpectedStr string = "(mock) some error"
+	)
+
+	err := &MockType{}
+
+	ok := Is(err, &MockType{})
+	if !ok {
+		t.Fatalf("Is() = %v, want %v", ok, true)
+	}
+
+	if err.Error() != ExpectedStr {
+		t.Errorf("Is() = %v, want %v", err, ExpectedStr)
 	}
 }

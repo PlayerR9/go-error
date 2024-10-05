@@ -2,21 +2,24 @@ package errs
 
 import "reflect"
 
+// FaultCode is the interface that all error codes should implement.
 type FaultCode interface {
 	~int
 
+	// String returns the string representation of the error code.
+	//
+	// Returns:
+	//   - string: The string representation of the error code.
 	String() string
 }
 
+// Fault is the interface that all errors should implement.
 type Fault interface {
+	// Error returns the string representation of the error.
+	//
+	// Returns:
+	//   - string: The string representation of the error.
 	Error() string
-}
-
-func New[C FaultCode](code C, msg string) Fault {
-	return &fault_string[C]{
-		code: code,
-		msg:  msg,
-	}
 }
 
 func Is(fault Fault, target Fault) bool {
@@ -24,8 +27,13 @@ func Is(fault Fault, target Fault) bool {
 		return false
 	}
 
-	return do(fault, func(fault Fault) bool {
-		return fault == target
+	return Traverse(fault, func(fault Fault) bool {
+		if fault == target {
+			return true
+		}
+
+		_, ok := fault.(interface{ Is(Fault) bool })
+		return ok
 	})
 }
 
@@ -46,41 +54,16 @@ func As(fault Fault, target any) bool {
 		return false
 	}
 
-	stack := []Fault{fault}
-
-	for len(stack) > 0 {
-		top := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-
-		if reflect.TypeOf(top).AssignableTo(type_) {
-			target_value.Elem().Set(reflect.ValueOf(top))
+	return Traverse(fault, func(fault Fault) bool {
+		if reflect.TypeOf(fault).AssignableTo(type_) {
+			target_value.Elem().Set(reflect.ValueOf(fault))
 
 			return true
 		}
 
 		e, ok := fault.(interface{ As(any) bool })
-		if ok && e.As(target) {
-			return true
-		}
-
-		switch fault := fault.(type) {
-		case interface{ Unwrap() Fault }:
-			inner := fault.Unwrap()
-			if inner != nil {
-				stack = append(stack, inner)
-			}
-		case interface{ Unwrap() []Fault }:
-			inners := fault.Unwrap()
-
-			for _, inner := range inners {
-				if inner != nil {
-					stack = append(stack, inner)
-				}
-			}
-		}
-	}
-
-	return false
+		return ok && e.As(target)
+	})
 }
 
 func Join(faults ...Fault) Fault {
