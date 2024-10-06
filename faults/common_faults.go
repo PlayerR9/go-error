@@ -3,7 +3,7 @@ package faults
 import (
 	"fmt"
 
-	flt "github.com/PlayerR9/go-error/fault"
+	flt "github.com/PlayerR9/go-error"
 )
 
 // FaultErr is a fault that wraps a Go error.

@@ -1,7 +1,7 @@
 package faults
 
 import (
-	flt "github.com/PlayerR9/go-error/fault"
+	flt "github.com/PlayerR9/go-error"
 )
 
 // try is a helper function for Try.
