@@ -1,5 +1,6 @@
 package errs
 
+// FaultLevel is the severity level of a fault.
 type FaultLevel int
 
 const (

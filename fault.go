@@ -1,38 +1,246 @@
+// Package errs defines the fault system, which is used to handle errors in a different
+// way than the standard library.
+//
+// A fault, unlike with the Go error, is defined to be a more "complex" data type that,
+// aside from having a message, it also carries additional information that follows the
+// "standard" format of:
+//
+//	"[<level>] (<code>) <msg>"
+//
+//	Occurred at: <timestamp>
+//
+//	// Additional information...
+//
+// where:
+//   - <level>: The level of the fault.
+//   - <code>: The code of the fault.
+//   - <msg>: The message of the fault.
+//   - <timestamp>: The timestamp of the fault.
+//   - Additional information: The additional information of the fault.
+//
+// Generally speaking, a custom fault is declared in the following way:
+//
+//	type ErrMyFault struct {
+//		Fault
+//
+//		// Additional fields...
+//	}
+//
+//	func (e ErrMyFault) Embeds() Fault {
+//		return e.Fault
+//	}
+//
+//	func (e ErrMyFault) WriteInfo(w Writer) (int, Fault) {
+//		// Write here the additional information of the fault. (Do not call e.Fault.WriteInfo()!)
+//	}
+//
+// Here, ErrMyFault embeds another fault and implements the Fault interface. As you can see,
+// the fault does not implement the Error() method of the Fault interface as, it's up to the
+// embedded fault to implement it.
+//
+// Therefore, any constructor would look like:
+//
+//	func NewErrMyFault(/*<args>*/) *ErrMyFault {
+//		base := // Constructor of the base fault
+//
+//		return &ErrMyFault{
+//			Fault: base,
+//
+//			// Additional fields...
+//		}
+//	}
 package errs
 
 import (
-	"io"
 	"reflect"
+	"slices"
 )
 
-// Fault is the interface that all errors should implement.
+// Fault is implemented by all errors/faults. However, a fault must embed another fault in order to implement
+// this interface. The embedded fault is referred to as the "base".
 type Fault interface {
-	// WriteInfo writes the error information to the writer. This excludes anything that
-	// Error() returns.
+	// Embeds returns the base of the fault.
+	//
+	// Returns:
+	//   - Fault: The base of the fault.
+	//
+	// A return value of nil indicates either that the fault is a FaultBase or that
+	// the fault does not want to "show" the embedded value.
+	Embeds() Fault
+
+	// WriteInfo writes the fault's additional information to the writer. Of course, this
+	// must exclude both what Error() returns and the embedded fault.
 	//
 	// Parameters:
-	//   - w: The writer to write the error information to. Assumed to be not nil.
+	//   - w: The writer to write the information to.
 	//
 	// Returns:
-	//   - error: The error that occurred while writing the information.
-	WriteInfo(w io.Writer) Fault
+	//   - int: The number of bytes that have been written.
+	//   - Fault: The fault that occurred while writing the information.
+	//
+	// NOTES:
+	// 	- If no faults occurred, the returned int value should be equal to the size of
+	// 	the data written to the writer.
+	WriteInfo(w Writer) (int, Fault)
 
-	// Error returns the string representation of the error.
+	// Error returns the string representation of the fault.
 	//
 	// Returns:
-	//   - string: The string representation of the error.
+	//   - string: The string representation of the fault.
+	//
+	// WARNING:
+	// 	- No fault should override this method as it is taken care of the fault's base.
 	Error() string
 }
 
-func FromError[C FaultCode](code C, err error) Fault {
-	var msg string
-
-	if err != nil {
-		msg = err.Error()
+// EmbeddingTower returns a list of all the bases that make up the embedding tower of the fault,
+// from the innermost fault to the outermost fault.
+//
+// An embedding tower is obtained by calling Embeds() on the fault until either the fault
+// does not embed any other fault or the fault was already seen. (The latter case prevents
+// infinite loops.)
+//
+// Parameters:
+//   - fault: The fault to get the embedding tower of.
+//
+// Returns:
+//   - []Fault: The embedding tower of the fault. The first element is the innermost fault
+//     and the last element is the outermost fault.
+func EmbeddingTower(fault Fault) []Fault {
+	if fault == nil {
+		return nil
 	}
 
-	return New(code, msg)
+	seen := make(map[Fault]struct{})
+
+	stack := []Fault{fault}
+
+	for {
+		top := stack[len(stack)-1]
+
+		_, ok := seen[top]
+		if ok {
+			break
+		}
+
+		seen[top] = struct{}{}
+
+		embedded := top.Embeds()
+		if embedded == nil {
+			break
+		}
+
+		stack = append(stack, embedded)
+	}
+
+	slices.Reverse(stack)
+
+	return stack
 }
+
+// WriteInfo writes the fault's additional information to the writer by traversing the embedding tower
+// of the fault and calling WriteInfo() on each fault. Of course, a newline is written between each
+// fault.
+//
+// Parameters:
+//   - w: The writer to write the information to.
+//   - fault: The fault whose additional information are to be written.
+//
+// Returns:
+//   - int: The number of bytes that have been written.
+//   - Fault: The fault that occurred while writing the information.
+//
+// This function guarantees that, if no faults occurred, the returned int value should be equal
+// to the size of the data written to the writer.
+func WriteInfo(w Writer, fault Fault) (int, Fault) {
+	if fault == nil {
+		return 0, nil
+	}
+
+	tower := EmbeddingTower(fault)
+	var total int
+
+	// 1. First call.
+	elem := tower[0]
+
+	n, err := elem.WriteInfo(w)
+	total += n
+
+	if err != nil {
+		return total, err
+	}
+
+	// 2. Subsequent calls.
+
+	for _, elem := range tower[1:] {
+		// Write newline between each fault.
+		n, err := WriteNewline(w, 1)
+		total += n
+
+		if err != nil {
+			return total, err
+		}
+
+		// Write info.
+		n, err = elem.WriteInfo(w)
+		total += n
+
+		if err != nil {
+			return total, err
+		}
+	}
+
+	return total, nil
+}
+
+// WriteFault writes both the fault's message and its embedding tower to the writer; adding
+// two newlines between them.
+//
+// Parameters:
+//   - w: The writer to write the error information to.
+//   - fault: The fault to write.
+//
+// Returns:
+//   - int: The number of bytes that have been written.
+//   - Fault: The error that occurred while writing the information.
+//
+// This function guarantees that, if no faults occurred, the returned int value should be equal
+// to the size of the data written to the writer.
+func WriteFault(w Writer, fault Fault) (int, Fault) {
+	if fault == nil {
+		return 0, nil
+	}
+
+	var total int
+
+	data := []byte(fault.Error())
+	if len(data) > 0 {
+		n, err := Write(w, data)
+		total += n
+
+		if err != nil {
+			return total, err
+		}
+
+		n, err = WriteNewline(w, 2)
+		total += n
+
+		if err != nil {
+			return total, err
+		}
+	}
+
+	n, err := WriteInfo(w, fault)
+	total += n
+
+	if err != nil {
+		return total, err
+	}
+
+	return total, nil
+}
+
+////////////////////////////////////////////////////////////////////
 
 func Is(fault Fault, target Fault) bool {
 	if fault == nil || target == nil {

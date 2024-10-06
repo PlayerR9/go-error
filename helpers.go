@@ -5,6 +5,8 @@ import (
 	"reflect"
 )
 
+////////////////////////////////////////////////////////////////////
+
 var (
 	// _FaultType is the reflect type of Fault interface.
 	_FaultType reflect.Type
