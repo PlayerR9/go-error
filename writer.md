@@ -35,8 +35,8 @@ func (e ErrShortWrite) Embeds() Fault {
 	return e.Fault
 }
 
-// WriteInfo implements the Fault interface.
-func (e ErrShortWrite) WriteInfo(w Writer) (int, Fault) {
+// InfoLines implements the Fault interface.
+func (e ErrShortWrite) InfoLines(w Writer) (int, Fault) {
 	// - Expected: <expected>
 	// - Actual: <actual>
 	data := []byte(fmt.Sprintf(

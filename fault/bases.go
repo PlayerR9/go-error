@@ -1,9 +1,6 @@
-package errs
+package fault
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
 // FaultCode is the interface that all fault codes should implement.
 type FaultCode interface {
@@ -63,28 +60,21 @@ func (bf baseFault[C]) Embeds() Fault {
 	return nil
 }
 
-// WriteInfo implements the Fault interface.
+// InfoLines implements the Fault interface.
 //
 // Format:
 //
 //	"- Occurred at: <timestamp>"
 //
 // Where, <timestamp> is the timestamp of the fault.
-func (bf baseFault[C]) WriteInfo(w Writer) (int, Fault) {
-	var total int
+func (bf baseFault[C]) InfoLines() []string {
+	var lines []string
 
 	if !bf.timestamp.IsZero() {
-		data := []byte("Occurred at: " + bf.timestamp.String())
-
-		n, err := Write(w, data)
-		total += n
-
-		if err != nil {
-			return total, err
-		}
+		lines = append(lines, "- Occurred at: "+bf.timestamp.String())
 	}
 
-	return total, nil
+	return lines
 }
 
 // Error implements the Fault interface.
@@ -109,98 +99,4 @@ func (bf baseFault[C]) Level() FaultLevel {
 // Timestamp implements the Fault interface.
 func (bf baseFault[C]) Timestamp() time.Time {
 	return bf.timestamp
-}
-
-// FaultErr is a fault that wraps a Go error.
-type FaultErr struct {
-	Fault
-
-	// Err is the error that occurred.
-	Err error
-}
-
-// Embeds implements the Fault interface.
-func (e FaultErr) Embeds() Fault {
-	return e.Fault
-}
-
-// WriteInfo implements the Fault interface.
-//
-// Format:
-//
-//	"- Error: <error>"
-//
-// Where, <error> is the error that occurred. If no error was provided, "no error
-// provided" is used instead.
-func (e FaultErr) WriteInfo(w Writer) (int, Fault) {
-	var err_str string
-
-	if e.Err == nil {
-		err_str = "no error provided"
-	} else {
-		err_str = e.Err.Error()
-	}
-
-	data := []byte("- Error: " + err_str)
-
-	n, err := Write(w, data)
-
-	return n, err
-}
-
-// NewFaultErr creates a new FaultErr.
-//
-// Parameters:
-//   - err: The error that occurred.
-//
-// Returns:
-//   - *FaultErr: The new FaultErr. Never returns nil.
-func NewFaultErr(err error) Fault {
-	base := New(Unknown, "something went wrong")
-
-	return &FaultErr{
-		Fault: base,
-		Err:   err,
-	}
-}
-
-// ErrPanic is an error that indicates that a panic occurred.
-type ErrPanic struct {
-	Fault
-
-	// Value is the value that was passed to panic.
-	Value any
-}
-
-// Embeds implements the Fault interface.
-func (e ErrPanic) Embeds() Fault {
-	return e.Fault
-}
-
-// WriteInfo implements the Fault interface.
-//
-// Format:
-//
-//	"- Value: <value>"
-func (e ErrPanic) WriteInfo(w Writer) (int, Fault) {
-	data := []byte(fmt.Sprintf("- Value: %v", e.Value))
-
-	n, err := Write(w, data)
-	return n, err
-}
-
-// NewErrPanic creates a new ErrPanic.
-//
-// Parameters:
-//   - value: The value that was passed to panic.
-//
-// Returns:
-//   - *ErrPanic: A new ErrPanic. Never returns nil.
-func NewErrPanic(value any) *ErrPanic {
-	base := WithLevel(FATAL, Unknown, "a panic occurred")
-
-	return &ErrPanic{
-		Fault: base,
-		Value: value,
-	}
 }

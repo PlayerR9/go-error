@@ -1,7 +1,6 @@
-package errs
+package fault
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -39,39 +38,6 @@ func WithLevel[C FaultCode](level FaultLevel, code C, msg string) Fault {
 		level:     level,
 		code:      code,
 		msg:       msg,
-		timestamp: time.Now(),
-	}
-}
-
-// FromString creates a new Fault with the given message and Unknown as its code.
-//
-// Parameters:
-//   - msg: The message of the fault.
-//
-// Returns:
-//   - Fault: The new Fault. Never returns nil.
-func FromString(msg string) Fault {
-	return &baseFault[StdFaultCode]{
-		level:     ERROR,
-		code:      Unknown,
-		msg:       msg,
-		timestamp: time.Now(),
-	}
-}
-
-// FromStringf is like FromString but with a format string.
-//
-// Parameters:
-//   - format: The format string of the fault.
-//   - args: The arguments.
-//
-// Returns:
-//   - Fault: The new Fault. Never returns nil.
-func FromStringf(format string, args ...any) Fault {
-	return &baseFault[StdFaultCode]{
-		level:     ERROR,
-		code:      Unknown,
-		msg:       fmt.Sprintf(format, args...),
 		timestamp: time.Now(),
 	}
 }

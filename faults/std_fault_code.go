@@ -1,4 +1,4 @@
-package errs
+package faults
 
 // StdFaultCode is the standard set of fault codes.
 type StdFaultCode int

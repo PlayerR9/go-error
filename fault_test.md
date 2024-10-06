@@ -8,8 +8,8 @@ func (m MockErr) Embeds() Fault {
 	return m.Fault
 }
 
-func (m MockErr) WriteInfo(w Writer) (int, Fault) {
-	return 0, nil
+func (m MockErr) InfoLines() []string {
+	return nil
 }
 
 func NewMockErr() *MockErr {

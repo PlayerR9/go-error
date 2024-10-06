@@ -1,4 +1,4 @@
-// Package errs defines the fault system, which is used to handle errors in a different
+// Package fault defines the fault system, which is used to handle errors in a different
 // way than the standard library.
 //
 // A fault, unlike with the Go error, is defined to be a more "complex" data type that,
@@ -49,7 +49,7 @@
 //			// Additional fields...
 //		}
 //	}
-package errs
+package fault
 
 import (
 	"reflect"
@@ -69,20 +69,12 @@ type Fault interface {
 	// the fault does not want to "show" the embedded value.
 	Embeds() Fault
 
-	// WriteInfo writes the fault's additional information to the writer. Of course, this
-	// must exclude both what Error() returns and the embedded fault.
-	//
-	// Parameters:
-	//   - w: The writer to write the information to.
+	// InfoLines returns the fault's additional information as a list of strings. The result
+	// is anything that is not already specified by the Error() method and its embedding tower.
 	//
 	// Returns:
-	//   - int: The number of bytes that have been written.
-	//   - Fault: The fault that occurred while writing the information.
-	//
-	// NOTES:
-	// 	- If no faults occurred, the returned int value should be equal to the size of
-	// 	the data written to the writer.
-	WriteInfo(w Writer) (int, Fault)
+	//   - []string: The fault's additional information.
+	InfoLines() []string
 
 	// Error returns the string representation of the fault.
 	//
@@ -157,106 +149,52 @@ func EmbeddingTower(fault Fault) []Fault {
 	return stack
 }
 
-// WriteInfo writes the fault's additional information to the writer by traversing the embedding tower
-// of the fault and calling WriteInfo() on each fault. Of course, a newline is written between each
-// fault.
+// InfoLines returns the fault's additional information as a list of strings. The result is obtained
+// by traversing the embedding tower of the fault and calling InfoLines() on each fault.
 //
 // Parameters:
-//   - w: The writer to write the information to.
 //   - fault: The fault whose additional information are to be written.
 //
 // Returns:
-//   - int: The number of bytes that have been written.
-//   - Fault: The fault that occurred while writing the information.
-//
-// This function guarantees that, if no faults occurred, the returned int value should be equal
-// to the size of the data written to the writer.
-func WriteInfo(w Writer, fault Fault) (int, Fault) {
+//   - []string: The fault's additional information.
+func InfoLines(fault Fault) []string {
 	if fault == nil {
-		return 0, nil
+		return nil
 	}
 
 	tower := EmbeddingTower(fault)
-	var total int
 
-	// 1. First call.
-	elem := tower[0]
+	var lines []string
 
-	n, err := elem.WriteInfo(w)
-	total += n
-
-	if err != nil {
-		return total, err
+	for _, elem := range tower {
+		tmp := elem.InfoLines()
+		lines = append(lines, tmp...)
 	}
 
-	// 2. Subsequent calls.
-
-	for _, elem := range tower[1:] {
-		// Write newline between each fault.
-		n, err := WriteNewline(w, 1)
-		total += n
-
-		if err != nil {
-			return total, err
-		}
-
-		// Write info.
-		n, err = elem.WriteInfo(w)
-		total += n
-
-		if err != nil {
-			return total, err
-		}
-	}
-
-	return total, nil
+	return lines
 }
 
-// WriteFault writes both the fault's message and its embedding tower to the writer; adding
-// two newlines between them.
+// LinesOf returns the fault's message and its embedding tower as a list of strings.
 //
 // Parameters:
-//   - w: The writer to write the error information to.
-//   - fault: The fault to write.
+//   - fault: The fault whose additional information are to be written.
 //
 // Returns:
-//   - int: The number of bytes that have been written.
-//   - Fault: The error that occurred while writing the information.
-//
-// This function guarantees that, if no faults occurred, the returned int value should be equal
-// to the size of the data written to the writer.
-func WriteFault(w Writer, fault Fault) (int, Fault) {
+//   - []string: The fault's additional information.
+func LinesOf(fault Fault) []string {
 	if fault == nil {
-		return 0, nil
+		return nil
 	}
 
-	var total int
+	var lines []string
 
-	data := []byte(fault.Error())
-	if len(data) > 0 {
-		n, err := Write(w, data)
-		total += n
+	lines = append(lines, fault.Error())
+	lines = append(lines, "", "")
 
-		if err != nil {
-			return total, err
-		}
+	tmp := InfoLines(fault)
+	lines = append(lines, tmp...)
 
-		n, err = WriteNewline(w, 2)
-		total += n
-
-		if err != nil {
-			return total, err
-		}
-	}
-
-	n, err := WriteInfo(w, fault)
-	total += n
-
-	if err != nil {
-		return total, err
-	}
-
-	return total, nil
+	return lines
 }
 
 // Is checks whether a fault or any fault it may wrap is equal to the target fault. The
@@ -350,60 +288,4 @@ func Unwrap(fault Fault) Fault {
 	}
 
 	return uw.Unwrap()
-}
-
-// try is a helper function for Try.
-//
-// Parameters:
-//   - fault: The fault to recover from.
-//   - fn: The function to execute.
-//
-// Assertions:
-//   - fn must not be nil.
-//   - fault must not be nil.
-func try(fault *Fault, fn func()) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-
-		switch r := r.(type) {
-		case Fault:
-			*fault = r
-		case string:
-			*fault = NewErrPanic(r)
-		case error:
-			*fault = NewFaultErr(r)
-		default:
-			*fault = NewErrPanic(r)
-		}
-	}()
-
-	fn()
-}
-
-// Try executes a panicing function and returns a fault with the paniced value.
-//
-// Parameters:
-//   - fn: The function to execute.
-//
-// Returns:
-//   - Fault: The fault with the paniced value. Nil if no panic occurred.
-//
-// Behaviors:
-//   - If the panic value is nil or it does not panic, it returns nil.
-//   - If the panic value is Fault, it returns it.
-//   - If the panic value is error, it returns a new FaultErr with the error.
-//   - In all other cases, it returns a new ErrPanic with the panic value.
-func Try(fn func()) Fault {
-	if fn == nil {
-		return nil
-	}
-
-	var fault Fault
-
-	try(&fault, fn)
-
-	return fault
 }
