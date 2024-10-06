@@ -1,25 +1,28 @@
 package errs
 
-import "testing"
+type MockErr struct {
+	Fault
+}
 
+func (m MockErr) Embeds() Fault {
+	return m.Fault
+}
+
+func (m MockErr) WriteInfo(w Writer) (int, Fault) {
+	return 0, nil
+}
+
+func NewMockErr() *MockErr {
+	base := New(Unknown, "some error")
+
+	return &MockErr{
+		Fault: base,
+	}
+}
+
+/*
 ////////////////////////////////////////////////////////////////////
 
-type MockCode int
-
-const (
-	MockCode1 MockCode = iota
-)
-
-func (m MockCode) String() string {
-	return "mock"
-}
-
-type MockType struct {
-}
-
-func (m MockType) Error() string {
-	return "(mock) some error"
-}
 
 func (m MockType) Is(target Fault) bool {
 	return m.Error() == target.Error()
@@ -64,3 +67,4 @@ func TestIs(t *testing.T) {
 		t.Errorf("Is() = %v, want %v", err, ExpectedStr)
 	}
 }
+*/

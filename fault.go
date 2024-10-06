@@ -54,6 +54,7 @@ package errs
 import (
 	"reflect"
 	"slices"
+	"time"
 )
 
 // Fault is implemented by all errors/faults. However, a fault must embed another fault in order to implement
@@ -91,6 +92,24 @@ type Fault interface {
 	// WARNING:
 	// 	- No fault should override this method as it is taken care of the fault's base.
 	Error() string
+
+	// Level returns the level of the fault.
+	//
+	// Returns:
+	//   - FaultLevel: The level of the fault.
+	//
+	// WARNING:
+	// 	- No fault should override this method as it is taken care of the fault's base.
+	Level() FaultLevel
+
+	// Timestamp returns the timestamp of the fault.
+	//
+	// Returns:
+	//   - time.Time: The timestamp of the fault.
+	//
+	// WARNING:
+	// 	- No fault should override this method as it is taken care of the fault's base.
+	Timestamp() time.Time
 }
 
 // EmbeddingTower returns a list of all the bases that make up the embedding tower of the fault,
@@ -240,23 +259,49 @@ func WriteFault(w Writer, fault Fault) (int, Fault) {
 	return total, nil
 }
 
-////////////////////////////////////////////////////////////////////
-
+// Is checks whether a fault or any fault it may wrap is equal to the target fault. The
+// search is done in a depth-first manner and it doesn't scan the fault's embedding tower.
+//
+// The comparison is done using pointer equality and the Is() method of the target fault. When
+// either is true, the function returns true.
+//
+// Parameters:
+//   - fault: The fault to check.
+//   - target: The fault to compare with.
+//
+// Returns:
+//   - bool: True if the fault (or any fault it may wrap) is equal to the target fault, false
+//     otherwise.
 func Is(fault Fault, target Fault) bool {
 	if fault == nil || target == nil {
 		return false
 	}
 
-	return Traverse(fault, func(fault Fault) bool {
-		if fault == target {
+	ok := Traverse(fault, func(f Fault) bool {
+		if f == target {
 			return true
 		}
 
-		_, ok := fault.(interface{ Is(Fault) bool })
+		_, ok := f.(interface{ Is(Fault) bool })
 		return ok
 	})
+
+	return ok
 }
 
+// As checks whether a fault or any fault it may wrap implements the target interface. The
+// search is done in a depth-first manner and it doesn't scan the fault's embedding tower.
+//
+// The comparison is done using pointer equality and the As() method of the target interface. When
+// either is true, the function returns true and the target is set to the fault.
+//
+// Parameters:
+//   - fault: The fault to check.
+//   - target: The target to set if the fault implements the target interface.
+//
+// Returns:
+//   - bool: True if the fault (or any fault it may wrap) implements the target interface, false
+//     otherwise.
 func As(fault Fault, target any) bool {
 	if fault == nil || target == nil {
 		return false
@@ -274,44 +319,91 @@ func As(fault Fault, target any) bool {
 		return false
 	}
 
-	return Traverse(fault, func(fault Fault) bool {
-		if reflect.TypeOf(fault).AssignableTo(type_) {
-			target_value.Elem().Set(reflect.ValueOf(fault))
+	return Traverse(fault, func(f Fault) bool {
+		if reflect.TypeOf(f).AssignableTo(type_) {
+			target_value.Elem().Set(reflect.ValueOf(f))
 
 			return true
 		}
 
-		e, ok := fault.(interface{ As(any) bool })
+		e, ok := f.(interface{ As(any) bool })
 		return ok && e.As(target)
 	})
 }
 
-func Join(faults ...Fault) Fault {
-	panic("not implemented")
-}
-
-// Unwrap extracts the underlying fault from a Fault. Yet, it doesn't extract it when the fault implements
-// Unwrap() []Fault interface.
+// Unwrap extracts the underlying fault from a Fault. It doesn't affect the embedding tower and ignores the error
+// if it does not implement Unwrap() Fault method.
 //
 // Parameters:
 //   - fault: The fault to unwrap.
 //
 // Returns:
 //   - Fault: The underlying fault.
-//
-// This function returns nil when:
-// - The fault is nil.
-// - The fault implements Unwrap() Fault interface but the underlying fault is nil.
-// - The fault doesn't implement Unwrap() Fault interface.
 func Unwrap(fault Fault) Fault {
 	if fault == nil {
 		return nil
 	}
 
-	f, ok := fault.(interface{ Unwrap() Fault })
+	uw, ok := fault.(interface{ Unwrap() Fault })
 	if !ok {
 		return nil
 	}
 
-	return f.Unwrap()
+	return uw.Unwrap()
+}
+
+// try is a helper function for Try.
+//
+// Parameters:
+//   - fault: The fault to recover from.
+//   - fn: The function to execute.
+//
+// Assertions:
+//   - fn must not be nil.
+//   - fault must not be nil.
+func try(fault *Fault, fn func()) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+
+		switch r := r.(type) {
+		case Fault:
+			*fault = r
+		case string:
+			*fault = NewErrPanic(r)
+		case error:
+			*fault = NewFaultErr(r)
+		default:
+			*fault = NewErrPanic(r)
+		}
+	}()
+
+	fn()
+}
+
+// Try executes a panicing function and returns a fault with the paniced value.
+//
+// Parameters:
+//   - fn: The function to execute.
+//
+// Returns:
+//   - Fault: The fault with the paniced value. Nil if no panic occurred.
+//
+// Behaviors:
+//   - If the panic value is nil or it does not panic, it returns nil.
+//   - If the panic value is Fault, it returns it.
+//   - If the panic value is error, it returns a new FaultErr with the error.
+//   - In all other cases, it returns a new ErrPanic with the panic value.
+func Try(fn func()) Fault {
+	if fn == nil {
+		return nil
+	}
+
+	var fault Fault
+
+	try(&fault, fn)
+
+	return fault
 }

@@ -1,69 +1,9 @@
 package errs
 
 import (
+	"fmt"
 	"io"
-	"strconv"
 )
-
-// ErrShortWrite is an error that indicates that the write operation has been
-// short written.
-type ErrShortWrite struct {
-	Fault
-
-	// Written is the number of bytes that have been written.
-	Written int
-
-	// Reason is the reason for the short write.
-	Reason string
-}
-
-// Embeds implements the Fault interface.
-//
-// Always returns nil.
-func (e ErrShortWrite) Embeds() Fault {
-	return e.Fault
-}
-
-// WriteInfo implements the Fault interface.
-//
-// Format:
-//
-//	"Bytes written: <written>"
-//	"Reason: <reason>"
-//
-// Where:
-//   - <written> is the number of bytes that have been written.
-//   - <reason> is the reason for the short write.
-func (e ErrShortWrite) WriteInfo(w Writer) (int, Fault) {
-	if w == nil {
-		return 0, NewErrShortWrite(0, "no writer provided")
-	}
-
-	data := []byte("Bytes written: " + strconv.Itoa(e.Written) + "\nReason: " + e.Reason + "\n")
-
-	n, err := w.Write(data)
-	return n, err
-}
-
-// NewErrShortWrite creates a new ErrShortWrite.
-//
-// Parameters:
-//   - n: The number of bytes that have been written.
-//   - reason: The reason for the short write.
-//
-// Returns:
-//   - *ErrShortWrite: The new ErrShortWrite. Never returns nil.
-func NewErrShortWrite(n int, reason string) *ErrShortWrite {
-	base := New(OperationFail, "short write")
-
-	fault := &ErrShortWrite{
-		Fault:   base,
-		Written: n,
-		Reason:  reason,
-	}
-
-	return fault
-}
 
 // Writer is the interface that all writers should implement.
 type Writer interface {
@@ -75,33 +15,141 @@ type Writer interface {
 	// Returns:
 	//   - int: The number of bytes that have been written.
 	//   - *ErrShortWrite: The fault that occurred while writing the data.
-	Write(data []byte) (int, *ErrShortWrite)
+	Write(data []byte) (int, Fault)
 }
 
-type writer struct {
+// ErrShortWrite is an error that indicates that the write operation has been
+// short written.
+type ErrShortWrite struct {
+	Fault
+
+	// Expected is the amount of bytes that were expected to be written.
+	Expected int
+
+	// Actual is the actual number of bytes that have been written.
+	Actual int
+}
+
+// Embeds implements the Fault interface.
+func (e ErrShortWrite) Embeds() Fault {
+	return e.Fault
+}
+
+// WriteInfo implements the Fault interface.
+func (e ErrShortWrite) WriteInfo(w Writer) (int, Fault) {
+	// - Expected: <expected>
+	// - Actual: <actual>
+	data := []byte(fmt.Sprintf(
+		"- Expected: %d\n- Actual: %d",
+		e.Expected,
+		e.Actual,
+	))
+
+	n, err := Write(w, data)
+	return n, err
+}
+
+// NewErrShortWrite creates a new ErrShortWrite.
+//
+// Parameters:
+//   - expected: The amount of bytes that were expected to be written.
+//   - actual: The actual number of bytes that have been written.
+//
+// Returns:
+//   - *ErrShortWrite: The new ErrShortWrite. Never returns nil.
+func NewErrShortWrite(expected, actual int) *ErrShortWrite {
+	base := New(OperationFail, "short write")
+
+	err := &ErrShortWrite{
+		Fault: base,
+
+		Expected: 0,
+		Actual:   0,
+	}
+
+	return err
+}
+
+// StreamWriter is an adapter that allows interoperation with the io.Writer
+// interface.
+type StreamWriter struct {
+	// w is the underlying io.Writer.
 	w io.Writer
+
+	// err is the error that occurred while writing.
+	err error
+
+	// actual is the number of bytes that have been written.
+	actual int
+
+	// total is the total number of bytes that have been written.
+	total int
 }
 
-func (w writer) Write(data []byte) (int, *ErrShortWrite) {
-	n, err := w.w.Write(data)
+// Write implements the io.Writer interface.
+//
+// Panics if the receiver is nil.
+func (sw *StreamWriter) Write(data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	} else if sw == nil {
+		panic("receiver must not be nil")
+	}
+
+	sw.total += len(data)
+
+	n, err := sw.w.Write(data)
+	sw.actual += n
+
+	if err == nil && n < len(data) {
+		err = io.ErrShortWrite
+	}
+
 	if err != nil {
-		return n, NewErrShortWrite(n, err.Error())
-	} else if n != len(data) {
-		return n, NewErrShortWrite(n, "not all bytes written")
+		sw.err = err
 	}
 
-	return n, nil
+	return n, err
 }
 
-func WriterOf(w io.Writer) Writer {
-	if w == nil {
-		return nil
+// Fault returns the fault that occurred while writing.
+//
+// Returns:
+//   - Fault: The fault that occurred while writing. If there was no fault, it will be nil.
+//
+// Faults:
+//   - ErrShortWrite: The fault that occurred while writing.
+//   - FaultErr: In any other case.
+func (sw StreamWriter) Fault() Fault {
+	if sw.err != nil {
+		return NewFaultErr(sw.err)
 	}
 
-	return &writer{
+	if sw.actual < sw.total {
+		return NewErrShortWrite(sw.total, sw.actual)
+	}
+
+	return nil
+}
+
+// WriterOf creates a StreamWriter from an io.Writer.
+//
+// Parameters:
+//   - w: The io.Writer to create the StreamWriter from. If w is nil, io.Discard is used.
+//
+// Returns:
+//   - *StreamWriter: The new StreamWriter. Never returns nil.
+func WriterOf(w io.Writer) *StreamWriter {
+	if w == nil {
+		w = io.Discard
+	}
+
+	return &StreamWriter{
 		w: w,
 	}
 }
+
+///////////////////////////////////////
 
 // Write writes the data to the writer.
 //
@@ -115,20 +163,21 @@ func WriterOf(w io.Writer) Writer {
 //
 // If a write is successful, the returned int is guaranteed to be equal to len(data).
 func Write(w Writer, data []byte) (int, Fault) {
-	if len(data) == 0 {
-		return 0, nil
-	} else if w == nil {
-		return 0, NewErrShortWrite(0, "no writer provided")
-	}
+	panic("not implemented")
+	// if len(data) == 0 {
+	// 	return 0, nil
+	// } else if w == nil {
+	// 	return 0, NewErrShortWrite(0, "no writer provided")
+	// }
 
-	n, err := w.Write(data)
-	if err != nil {
-		return n, err
-	} else if n != len(data) {
-		return n, NewErrShortWrite(n, "not all bytes written")
-	}
+	// n, err := w.Write(data)
+	// if err != nil {
+	// 	return n, err
+	// } else if n != len(data) {
+	// 	return n, NewErrShortWrite(n, "not all bytes written")
+	// }
 
-	return n, nil
+	// return n, nil
 }
 
 // WriteNewline writes newlines to the writer.
@@ -143,65 +192,28 @@ func Write(w Writer, data []byte) (int, Fault) {
 //
 // If a write is successful, the returned int is guaranteed to be equal to 1.
 func WriteNewline(w Writer, count int) (int, Fault) {
-	if count <= 0 {
-		return 0, nil
-	} else if w == nil {
-		return 0, NewErrShortWrite(0, "no writer provided")
-	}
+	panic("not implemented")
 
-	data := []byte("\n")
+	// if count <= 0 {
+	// 	return 0, nil
+	// } else if w == nil {
+	// 	return 0, NewErrShortWrite(0, "no writer provided")
+	// }
 
-	var total int
+	// data := []byte("\n")
 
-	for i := 0; i < count; i++ {
-		n, err := w.Write(data)
-		total += n
+	// var total int
 
-		if err != nil {
-			return total, err
-		} else if n != len(data) {
-			return total, NewErrShortWrite(n, "not all bytes written")
-		}
-	}
+	// for i := 0; i < count; i++ {
+	// 	n, err := w.Write(data)
+	// 	total += n
 
-	return total, nil
+	// 	if err != nil {
+	// 		return total, err
+	// 	} else if n != len(data) {
+	// 		return total, NewErrShortWrite(n, "not all bytes written")
+	// 	}
+	// }
+
+	// return total, nil
 }
-
-////////////////////////////////////////////////////////////////////
-
-/* func Write(w io.Writer, data []byte) *ErrShortWrite {
-	n, err := w.Write(data)
-	if err != nil {
-		return NewErrShortWrite(n)
-	} else if n != len(data) {
-		return NewErrShortWrite(n, nil)
-	}
-
-	return nil
-} */
-
-//////////
-/*
-func WriteFault(w io.Writer, fault Fault) Fault {
-	if fault == nil {
-		return nil
-	}
-
-	data := []byte(fault.Error())
-	if len(data) == 0 {
-		return nil
-	} else if w == nil {
-
-		return ErrShortWrite
-	}
-
-	n, err := w.Write(data)
-	if err != nil {
-		return NewFromError(OperationFail, err)
-	} else if n != len(data) {
-		return ErrShortWrite
-	}
-
-	return nil
-}
-*/
