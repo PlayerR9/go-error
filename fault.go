@@ -102,6 +102,15 @@ type Fault interface {
 	// WARNING:
 	// 	- No fault should override this method as it is taken care of the fault's base.
 	Timestamp() time.Time
+
+	// Descriptor returns the descriptor of the fault.
+	//
+	// Returns:
+	//   - FaultDescriber: The descriptor of the fault.
+	//
+	// WARNING:
+	// 	- No fault should override this method as it is taken care of the fault's base.
+	Descriptor() FaultDescriber
 }
 
 // EmbeddingTower returns a list of all the bases that make up the embedding tower of the fault,
@@ -218,8 +227,10 @@ func Is(fault Fault, target Fault) bool {
 		return false
 	}
 
+	target_desc := target.Descriptor()
+
 	ok := Traverse(fault, func(f Fault) bool {
-		if f == target {
+		if f == target || f.Descriptor() == target_desc {
 			return true
 		}
 

@@ -1,9 +1,5 @@
 package fault
 
-import (
-	"time"
-)
-
 // New creates a new Fault given the code and its message. The timestamp is set to the
 // current time.
 //
@@ -16,12 +12,9 @@ import (
 //
 // The level of the fault is set to ERROR.
 func New[C FaultCode](code C, msg string) Fault {
-	return &baseFault[C]{
-		level:     ERROR,
-		code:      code,
-		msg:       msg,
-		timestamp: time.Now(),
-	}
+	descriptor := NewDescriptor(ERROR, code, msg)
+
+	return descriptor.Init()
 }
 
 // WithLevel is like New but allows to specify the level of the fault.
@@ -34,10 +27,7 @@ func New[C FaultCode](code C, msg string) Fault {
 // Returns:
 //   - Fault: The new Fault. Never returns nil.
 func WithLevel[C FaultCode](level FaultLevel, code C, msg string) Fault {
-	return &baseFault[C]{
-		level:     level,
-		code:      code,
-		msg:       msg,
-		timestamp: time.Now(),
-	}
+	descriptor := NewDescriptor(level, code, msg)
+
+	return descriptor.Init()
 }
