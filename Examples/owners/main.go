@@ -5,6 +5,7 @@ import (
 
 	"github.com/PlayerR9/go-fault"
 	"github.com/PlayerR9/go-fault/Examples/owners/internal"
+	"github.com/PlayerR9/go-fault/faults"
 )
 
 var (
@@ -48,7 +49,7 @@ func main() {
 			panic(err)
 		}
 	} else {
-		lines := fault.LinesOf(err)
+		lines := faults.LinesOf(err)
 
 		for _, line := range lines {
 			_, err := fmt.Println(line)

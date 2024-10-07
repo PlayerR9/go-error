@@ -1,6 +1,78 @@
-package fault
+package faults
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+
+	flt "github.com/PlayerR9/go-fault"
+)
+
+func Access[T flt.Fault](fault flt.Fault) (T, bool) {
+	zero := *new(T)
+
+	for fault != nil {
+		v, ok := fault.(T)
+		if ok {
+			return v, true
+		}
+
+		fault = fault.Embeds()
+	}
+
+	return zero, false
+}
+
+func DescriptorOf(fault flt.Fault) flt.FaultDescriber {
+	if fault == nil {
+		return nil
+	}
+
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
+	}
+
+	return base.descriptor
+}
+
+func ErrorOf(fault flt.Fault) string {
+	if fault == nil {
+		return ""
+	}
+
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
+	}
+
+	return base.Error()
+}
+
+func LevelOf(fault flt.Fault) flt.FaultLevel {
+	if fault == nil {
+		return flt.UnknownLevel
+	}
+
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
+	}
+
+	return base.descriptor.Level()
+}
+
+func TimestampOf(fault flt.Fault) time.Time {
+	if fault == nil {
+		return time.Time{}
+	}
+
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
+	}
+
+	return base.timestamp
+}
 
 // AddKey adds a new key/value pair to the fault's context if key is not empty.
 //
@@ -11,7 +83,7 @@ import "fmt"
 //
 // Returns:
 //   - bool: True if the key is empty or the fault is not nil, false otherwise.
-func AddKey(fault Fault, key string, value any) bool {
+func AddKey(fault flt.Fault, key string, value any) bool {
 	if key == "" {
 		return true
 	}
@@ -20,9 +92,9 @@ func AddKey(fault Fault, key string, value any) bool {
 		return false
 	}
 
-	base := get_base(fault)
-	if base == nil {
-		panic(BadConstruction.Init())
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
 	}
 
 	if base.context == nil {
@@ -42,15 +114,15 @@ func AddKey(fault Fault, key string, value any) bool {
 //
 // Returns:
 //   - any: The value of the key.
-//   - Fault: The fault that caused the error.
-func GetValue(fault Fault, key string) (any, Fault) {
+//   - flt.Fault: The fault that caused the error.
+func GetValue(fault flt.Fault, key string) (any, flt.Fault) {
 	if fault == nil {
 		return nil, NewNilParameter("fault")
 	}
 
-	base := get_base(fault)
-	if base == nil {
-		panic(BadConstruction.Init())
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
 	}
 
 	if len(base.context) == 0 {
@@ -73,8 +145,8 @@ func GetValue(fault Fault, key string) (any, Fault) {
 //
 // Returns:
 //   - T: The value of the key.
-//   - Fault: The fault that caused the error.
-func ValueOf[T any](fault Fault, key string) (T, Fault) {
+//   - flt.Fault: The fault that caused the error.
+func ValueOf[T any](fault flt.Fault, key string) (T, flt.Fault) {
 	zero := *new(T)
 
 	val, err := GetValue(fault, key)
@@ -105,22 +177,22 @@ func ValueOf[T any](fault Fault, key string) (T, Fault) {
 //   - value: The value to set.
 //
 // Returns:
-//   - Fault: The fault that caused the error.
-func SetValue(fault Fault, key string, value any) Fault {
+//   - flt.Fault: The fault that caused the error.
+func SetValue(fault flt.Fault, key string, value any) flt.Fault {
 	if fault == nil {
 		return NewNilParameter("fault")
 	}
 
-	base := get_base(fault)
-	if base == nil {
-		panic(BadConstruction.Init())
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
 	}
 
 	if len(base.context) == 0 {
 		return NewNoSuchKey(key)
 	}
 
-	_, ok := base.context[key]
+	_, ok = base.context[key]
 	if !ok {
 		return NewNoSuchKey(key)
 	}
@@ -138,15 +210,15 @@ func SetValue(fault Fault, key string, value any) Fault {
 //   - fn: The function to edit the value with.
 //
 // Returns:
-//   - Fault: The fault that caused the error.
-func EditValue(fault Fault, key string, fn func(v any) any) Fault {
+//   - flt.Fault: The fault that caused the error.
+func EditValue(fault flt.Fault, key string, fn func(v any) any) flt.Fault {
 	if fault == nil {
 		return NewNilParameter("fault")
 	}
 
-	base := get_base(fault)
-	if base == nil {
-		panic(BadConstruction.Init())
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
 	}
 
 	v, err := GetValue(fault, key)
@@ -167,15 +239,15 @@ func EditValue(fault Fault, key string, fn func(v any) any) Fault {
 //   - key: The key to delete.
 //
 // Returns:
-//   - Fault: The fault that caused the error.
-func DeleteKey(fault Fault, key string) {
+//   - flt.Fault: The fault that caused the error.
+func DeleteKey(fault flt.Fault, key string) {
 	if fault == nil {
 		return
 	}
 
-	base := get_base(fault)
-	if base == nil {
-		panic(BadConstruction.Init())
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
 	}
 
 	delete(base.context, key)
@@ -190,7 +262,7 @@ func DeleteKey(fault Fault, key string) {
 // Returns:
 //   - bool: True if the suggestions were set, false otherwise. It only returns false
 //     when there is at least one non-empty suggestion and the fault is nil.
-func SetSuggestions(fault Fault, suggestions ...string) bool {
+func SetSuggestions(fault flt.Fault, suggestions ...string) bool {
 	var count int
 
 	for i := 0; i < len(suggestions); i++ {
@@ -207,9 +279,9 @@ func SetSuggestions(fault Fault, suggestions ...string) bool {
 		return false
 	}
 
-	base := get_base(fault)
-	if base == nil {
-		panic(BadConstruction.Init())
+	base, ok := Access[*flt.BaseFault](fault)
+	if !ok {
+		panic(flt.BadConstruction.Init())
 	}
 
 	filtered := make([]string, 0, count)

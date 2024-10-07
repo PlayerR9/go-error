@@ -52,8 +52,46 @@
 package fault
 
 import (
-	"reflect"
 	"slices"
+)
+
+// FaultCode is the interface that all fault codes should implement.
+type FaultCode interface {
+	~int
+
+	// String returns the string representation of the fault code.
+	//
+	// Returns:
+	//   - string: The string representation of the fault code.
+	String() string
+}
+
+// FaultLevel is the severity level of a fault.
+type FaultLevel int
+
+const (
+	// UnknownLevel represents a fault that has not been initialized or set yet.
+	UnknownLevel FaultLevel = iota - 1 // UNKNOWN LEVEL
+
+	// FATAL is the highest level of severity and represents faults that are panic-level of
+	// severity.
+	FATAL // FATAL
+
+	// ERROR is the second highest level of severity and represents faults that are recoverable
+	// errors. This is the "normal" level of severity.
+	ERROR // ERROR
+
+	// WARNING is the third highest level of severity and represents faults that are not
+	// problematic but may require attention.
+	WARNING // WARNING
+
+	// NOTICE is the fourth highest level of severity and are only used to inform the user/
+	// operator about something that is not critical.
+	NOTICE // NOTICE
+
+	// DEBUG is the lowest level of severity and represents faults that are only used during
+	// debugging and ignored in production.
+	DEBUG // DEBUG
 )
 
 // Fault is implemented by all errors/faults. However, a fault must embed another fault in order to implement
@@ -144,108 +182,6 @@ func InfoLines(fault Fault) []string {
 	}
 
 	return lines
-}
-
-// LinesOf returns the fault's message and its embedding tower as a list of strings.
-//
-// Parameters:
-//   - fault: The fault whose additional information are to be written.
-//
-// Returns:
-//   - []string: The fault's additional information.
-//
-// An empty line is added between the message and the embedding tower. Also, a "dot" is
-// added at the end of the message.
-func LinesOf(fault Fault) []string {
-	if fault == nil {
-		return nil
-	}
-
-	var lines []string
-
-	lines = append(lines, ErrorOf(fault)+".")
-	lines = append(lines, "")
-
-	tmp := InfoLines(fault)
-	lines = append(lines, tmp...)
-
-	return lines
-}
-
-// Is checks whether a fault or any fault it may wrap is equal to the target fault. The
-// search is done in a depth-first manner and it doesn't scan the fault's embedding tower.
-//
-// The comparison is done using pointer equality and the Is() method of the target fault. When
-// either is true, the function returns true.
-//
-// Parameters:
-//   - fault: The fault to check.
-//   - target: The fault to compare with.
-//
-// Returns:
-//   - bool: True if the fault (or any fault it may wrap) is equal to the target fault, false
-//     otherwise.
-func Is(fault Fault, target Fault) bool {
-	if fault == nil || target == nil {
-		return false
-	}
-
-	target_desc := DescriptorOf(target)
-
-	ok := Traverse(fault, func(f Fault) bool {
-		f_desc := DescriptorOf(f)
-
-		if f == target || f_desc == target_desc {
-			return true
-		}
-
-		_, ok := f.(interface{ Is(Fault) bool })
-		return ok
-	})
-
-	return ok
-}
-
-// As checks whether a fault or any fault it may wrap implements the target interface. The
-// search is done in a depth-first manner and it doesn't scan the fault's embedding tower.
-//
-// The comparison is done using pointer equality and the As() method of the target interface. When
-// either is true, the function returns true and the target is set to the fault.
-//
-// Parameters:
-//   - fault: The fault to check.
-//   - target: The target to set if the fault implements the target interface.
-//
-// Returns:
-//   - bool: True if the fault (or any fault it may wrap) implements the target interface, false
-//     otherwise.
-func As(fault Fault, target any) bool {
-	if fault == nil || target == nil {
-		return false
-	}
-
-	target_value := reflect.ValueOf(target)
-
-	target_type := target_value.Type()
-	if target_type.Kind() != reflect.Ptr || target_value.IsNil() {
-		return false
-	}
-
-	type_ := target_type.Elem()
-	if type_.Kind() != reflect.Interface && !type_.Implements(_FaultType) {
-		return false
-	}
-
-	return Traverse(fault, func(f Fault) bool {
-		if reflect.TypeOf(f).AssignableTo(type_) {
-			target_value.Elem().Set(reflect.ValueOf(f))
-
-			return true
-		}
-
-		e, ok := f.(interface{ As(any) bool })
-		return ok && e.As(target)
-	})
 }
 
 // Unwrap extracts the underlying fault from a Fault. It doesn't affect the embedding tower and ignores the error
