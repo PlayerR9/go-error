@@ -1,41 +1,8 @@
 package fault
 
-import "time"
-
-// FaultCode is the interface that all fault codes should implement.
-type FaultCode interface {
-	~int
-
-	// String returns the string representation of the fault code.
-	//
-	// Returns:
-	//   - string: The string representation of the fault code.
-	String() string
-}
-
-// FaultLevel is the severity level of a fault.
-type FaultLevel int
-
-const (
-	// FATAL is the highest level of severity and represents faults that are panic-level of
-	// severity.
-	FATAL FaultLevel = iota
-
-	// ERROR is the second highest level of severity and represents faults that are recoverable
-	// errors. This is the "normal" level of severity.
-	ERROR
-
-	// WARNING is the third highest level of severity and represents faults that are not
-	// problematic but may require attention.
-	WARNING
-
-	// NOTICE is the fourth highest level of severity and are only used to inform the user/
-	// operator about something that is not critical.
-	NOTICE
-
-	// DEBUG is the lowest level of severity and represents faults that are only used during
-	// debugging and ignored in production.
-	DEBUG
+import (
+	"strings"
+	"time"
 )
 
 // baseFault is the base implementation of the Fault interface.
@@ -88,7 +55,16 @@ func (bf baseFault[C]) InfoLines() []string {
 //   - <code>: The code of the fault.
 //   - <msg>: The message of the fault.
 func (bf baseFault[C]) Error() string {
-	return "[" + bf.level.String() + "] (" + bf.code.String() + ") " + bf.msg
+	var builder strings.Builder
+
+	builder.WriteRune('[')
+	builder.WriteString(bf.level.String())
+	builder.WriteString("] (")
+	builder.WriteString(bf.code.String())
+	builder.WriteString(") ")
+	builder.WriteString(bf.msg)
+
+	return builder.String()
 }
 
 // Level implements the Fault interface.

@@ -181,6 +181,9 @@ func InfoLines(fault Fault) []string {
 //
 // Returns:
 //   - []string: The fault's additional information.
+//
+// An empty line is added between the message and the embedding tower. Also, a "dot" is
+// added at the end of the message.
 func LinesOf(fault Fault) []string {
 	if fault == nil {
 		return nil
@@ -188,8 +191,8 @@ func LinesOf(fault Fault) []string {
 
 	var lines []string
 
-	lines = append(lines, fault.Error())
-	lines = append(lines, "", "")
+	lines = append(lines, fault.Error()+".")
+	lines = append(lines, "")
 
 	tmp := InfoLines(fault)
 	lines = append(lines, tmp...)

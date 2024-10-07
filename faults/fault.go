@@ -1,7 +1,7 @@
 package faults
 
 import (
-	flt "github.com/PlayerR9/go-error"
+	flt "github.com/PlayerR9/go-fault"
 )
 
 // try is a helper function for Try.
@@ -26,7 +26,7 @@ func try(fault *flt.Fault, fn func()) {
 		case string:
 			*fault = NewErrPanic(r)
 		case error:
-			*fault = NewFaultErr(r)
+			*fault = FromErr(r)
 		default:
 			*fault = NewErrPanic(r)
 		}

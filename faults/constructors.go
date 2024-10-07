@@ -3,7 +3,7 @@ package faults
 import (
 	"fmt"
 
-	flt "github.com/PlayerR9/go-error"
+	flt "github.com/PlayerR9/go-fault"
 )
 
 // FromString creates a new Fault with the given message and Unknown as its code.

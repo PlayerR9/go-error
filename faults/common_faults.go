@@ -3,57 +3,8 @@ package faults
 import (
 	"fmt"
 
-	flt "github.com/PlayerR9/go-error"
+	flt "github.com/PlayerR9/go-fault"
 )
-
-// FaultErr is a fault that wraps a Go error.
-type FaultErr struct {
-	flt.Fault
-
-	// Err is the error that occurred.
-	Err error
-}
-
-// Embeds implements the Fault interface.
-func (e FaultErr) Embeds() flt.Fault {
-	return e.Fault
-}
-
-// InfoLines implements the Fault interface.
-//
-// Format:
-//
-//	"- Error: <error>"
-//
-// Where, <error> is the error that occurred. If no error was provided, "no error
-// provided" is used instead.
-func (e FaultErr) InfoLines() []string {
-	lines := make([]string, 0, 1)
-
-	if e.Err != nil {
-		lines = append(lines, "- Error: "+e.Err.Error())
-	} else {
-		lines = append(lines, "- Error: no error provided")
-	}
-
-	return lines
-}
-
-// NewFaultErr creates a new FaultErr.
-//
-// Parameters:
-//   - err: The error that occurred.
-//
-// Returns:
-//   - *FaultErr: The new FaultErr. Never returns nil.
-func NewFaultErr(err error) flt.Fault {
-	base := flt.New(Unknown, "something went wrong")
-
-	return &FaultErr{
-		Fault: base,
-		Err:   err,
-	}
-}
 
 // ErrPanic is an error that indicates that a panic occurred.
 type ErrPanic struct {
