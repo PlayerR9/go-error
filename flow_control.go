@@ -20,50 +20,6 @@ func get_base(fault Fault) *baseFault {
 	return nil
 }
 
-// SetSuggestions sets the fault's suggestions; ignoring any empty suggestions.
-//
-// Parameters:
-//   - fault: The fault to set the suggestions for.
-//   - suggestions: The suggestions to set.
-//
-// Returns:
-//   - bool: True if the suggestions were set, false otherwise. It only returns false
-//     when there is at least one non-empty suggestion and the fault is nil.
-func SetSuggestions(fault Fault, suggestions ...string) bool {
-	var count int
-
-	for i := 0; i < len(suggestions); i++ {
-		if suggestions[i] != "" {
-			count++
-		}
-	}
-
-	if count == 0 {
-		return true
-	}
-
-	if fault == nil {
-		return false
-	}
-
-	base := get_base(fault)
-	if base == nil {
-		panic(BadConstruction.Init())
-	}
-
-	filtered := make([]string, 0, count)
-
-	for i := 0; i < len(suggestions); i++ {
-		if suggestions[i] != "" {
-			filtered = append(filtered, suggestions[i])
-		}
-	}
-
-	base.suggestions = append(base.suggestions, filtered...)
-
-	return true
-}
-
 // Throw adds a stack trace's frame to the fault and returns the fault.
 //
 // Parameters:
@@ -82,6 +38,62 @@ func Throw(fault Fault, frame string) Fault {
 	}
 
 	base.stack_trace = append(base.stack_trace, frame)
+
+	return fault
+}
+
+// try is a helper function for Try.
+//
+// Parameters:
+//   - fault: The fault to recover from.
+//   - fn: The function to execute.
+//
+// Assertions:
+//   - fn must not be nil.
+//   - fault must not be nil.
+func try(fault *Fault, fn func()) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+
+		switch r := r.(type) {
+		case Fault:
+			*fault = r
+		case string:
+			*fault = NewErrPanic(r)
+		case error:
+			*fault = FromErr(r)
+		default:
+			*fault = NewErrPanic(r)
+		}
+	}()
+
+	fn()
+}
+
+// Try executes a panicing function and returns a fault with the paniced value.
+//
+// Parameters:
+//   - fn: The function to execute.
+//
+// Returns:
+//   - fault.Fault: The fault with the paniced value. Nil if no panic occurred.
+//
+// Behaviors:
+//   - If the panic value is nil or it does not panic, it returns nil.
+//   - If the panic value is Fault, it returns it.
+//   - If the panic value is error, it returns a new FaultErr with the error.
+//   - In all other cases, it returns a new ErrPanic with the panic value.
+func Try(fn func()) Fault {
+	if fn == nil {
+		return nil
+	}
+
+	var fault Fault
+
+	try(&fault, fn)
 
 	return fault
 }

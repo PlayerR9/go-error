@@ -180,3 +180,47 @@ func DeleteKey(fault Fault, key string) {
 
 	delete(base.context, key)
 }
+
+// SetSuggestions sets the fault's suggestions; ignoring any empty suggestions.
+//
+// Parameters:
+//   - fault: The fault to set the suggestions for.
+//   - suggestions: The suggestions to set.
+//
+// Returns:
+//   - bool: True if the suggestions were set, false otherwise. It only returns false
+//     when there is at least one non-empty suggestion and the fault is nil.
+func SetSuggestions(fault Fault, suggestions ...string) bool {
+	var count int
+
+	for i := 0; i < len(suggestions); i++ {
+		if suggestions[i] != "" {
+			count++
+		}
+	}
+
+	if count == 0 {
+		return true
+	}
+
+	if fault == nil {
+		return false
+	}
+
+	base := get_base(fault)
+	if base == nil {
+		panic(BadConstruction.Init())
+	}
+
+	filtered := make([]string, 0, count)
+
+	for i := 0; i < len(suggestions); i++ {
+		if suggestions[i] != "" {
+			filtered = append(filtered, suggestions[i])
+		}
+	}
+
+	base.suggestions = append(base.suggestions, filtered...)
+
+	return true
+}

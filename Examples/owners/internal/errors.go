@@ -4,7 +4,6 @@ import (
 	"strconv"
 
 	"github.com/PlayerR9/go-fault"
-	"github.com/PlayerR9/go-fault/faults"
 )
 
 // ErrKeyNotFound is an error that indicates that the specified key was not found.
@@ -52,7 +51,7 @@ func (e ErrKeyNotFound) InfoLines() []string {
 //   - *ErrKeyNotFound: The error that indicates that the specified key was not found.
 //     Never returns nil.
 func NewErrKeyNotFound(key string, set_name string) *ErrKeyNotFound {
-	base := fault.New(faults.OperationFail, "the specified key was not found")
+	base := fault.New(fault.OperationFailed, "the specified key was not found")
 
 	return &ErrKeyNotFound{
 		Fault:   base,
