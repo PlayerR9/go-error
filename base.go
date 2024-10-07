@@ -1,6 +1,7 @@
 package fault
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -21,25 +22,28 @@ type FaultCode interface {
 type FaultLevel int
 
 const (
+	// UnknownLevel represents a fault that has not been initialized or set yet.
+	UnknownLevel FaultLevel = iota - 1 // UNKNOWN LEVEL
+
 	// FATAL is the highest level of severity and represents faults that are panic-level of
 	// severity.
-	FATAL FaultLevel = iota
+	FATAL // FATAL
 
 	// ERROR is the second highest level of severity and represents faults that are recoverable
 	// errors. This is the "normal" level of severity.
-	ERROR
+	ERROR // ERROR
 
 	// WARNING is the third highest level of severity and represents faults that are not
 	// problematic but may require attention.
-	WARNING
+	WARNING // WARNING
 
 	// NOTICE is the fourth highest level of severity and are only used to inform the user/
 	// operator about something that is not critical.
-	NOTICE
+	NOTICE // NOTICE
 
 	// DEBUG is the lowest level of severity and represents faults that are only used during
 	// debugging and ignored in production.
-	DEBUG
+	DEBUG // DEBUG
 )
 
 // FaultDescriber is the interface that all fault describers should implement.
@@ -147,11 +151,12 @@ type baseFault struct {
 
 	// stack_trace is the stack trace of the fault.
 	stack_trace []string
-}
 
-// Descriptor implements the Fault interface.
-func (bf baseFault) Descriptor() FaultDescriber {
-	return bf.descriptor
+	// context is the context of the fault.
+	context map[string]any
+
+	// cause is the cause of the fault.
+	cause Fault
 }
 
 // Embeds implements the Fault interface.
@@ -193,6 +198,14 @@ func (bf baseFault) InfoLines() []string {
 		}
 	}
 
+	if len(bf.context) > 0 {
+		lines = append(lines, "Context:")
+
+		for k, v := range bf.context {
+			lines = append(lines, fmt.Sprintf("- %s: %v", k, v))
+		}
+	}
+
 	if len(bf.stack_trace) > 0 {
 		lines = append(lines, "Stack trace:")
 
@@ -205,29 +218,68 @@ func (bf baseFault) InfoLines() []string {
 		lines = append(lines, "- "+strings.Join(trace, " <- "))
 	}
 
+	if bf.cause != nil {
+		lines = append(lines, "Caused by:")
+
+		tmp := LinesOf(bf.cause)
+		for i := 0; i < len(tmp); i++ {
+			tmp[i] = "\t" + tmp[i]
+		}
+
+		lines = append(lines, tmp...)
+	}
+
 	return lines
 }
 
-// Error implements the Fault interface.
-//
-// Format:
-//
-//	"[<level>] (<code>) <msg>"
-//
-// where:
-//   - <level>: The level of the fault.
-//   - <code>: The code of the fault.
-//   - <msg>: The message of the fault.
-func (bf baseFault) Error() string {
-	return bf.descriptor.String()
+func DescriptorOf(fault Fault) FaultDescriber {
+	if fault == nil {
+		return nil
+	}
+
+	base := get_base(fault)
+	if base == nil {
+		panic(BadConstruction.Init())
+	}
+
+	return base.descriptor
 }
 
-// Level implements the Fault interface.
-func (bf baseFault) Level() FaultLevel {
-	return bf.descriptor.Level()
+func ErrorOf(fault Fault) string {
+	if fault == nil {
+		return ""
+	}
+
+	base := get_base(fault)
+	if base == nil {
+		panic(BadConstruction.Init())
+	}
+
+	return base.descriptor.String()
 }
 
-// Timestamp implements the Fault interface.
-func (bf baseFault) Timestamp() time.Time {
-	return bf.timestamp
+func LevelOf(fault Fault) FaultLevel {
+	if fault == nil {
+		return UnknownLevel
+	}
+
+	base := get_base(fault)
+	if base == nil {
+		panic(BadConstruction.Init())
+	}
+
+	return base.descriptor.Level()
+}
+
+func TimestampOf(fault Fault) time.Time {
+	if fault == nil {
+		return time.Time{}
+	}
+
+	base := get_base(fault)
+	if base == nil {
+		panic(BadConstruction.Init())
+	}
+
+	return base.timestamp
 }

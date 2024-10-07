@@ -54,7 +54,6 @@ package fault
 import (
 	"reflect"
 	"slices"
-	"time"
 )
 
 // Fault is implemented by all errors/faults. However, a fault must embed another fault in order to implement
@@ -75,42 +74,6 @@ type Fault interface {
 	// Returns:
 	//   - []string: The fault's additional information.
 	InfoLines() []string
-
-	// Error returns the string representation of the fault.
-	//
-	// Returns:
-	//   - string: The string representation of the fault.
-	//
-	// WARNING:
-	// 	- No fault should override this method as it is taken care of the fault's base.
-	Error() string
-
-	// Level returns the level of the fault.
-	//
-	// Returns:
-	//   - FaultLevel: The level of the fault.
-	//
-	// WARNING:
-	// 	- No fault should override this method as it is taken care of the fault's base.
-	Level() FaultLevel
-
-	// Timestamp returns the timestamp of the fault.
-	//
-	// Returns:
-	//   - time.Time: The timestamp of the fault.
-	//
-	// WARNING:
-	// 	- No fault should override this method as it is taken care of the fault's base.
-	Timestamp() time.Time
-
-	// Descriptor returns the descriptor of the fault.
-	//
-	// Returns:
-	//   - FaultDescriber: The descriptor of the fault.
-	//
-	// WARNING:
-	// 	- No fault should override this method as it is taken care of the fault's base.
-	Descriptor() FaultDescriber
 }
 
 // EmbeddingTower returns a list of all the bases that make up the embedding tower of the fault,
@@ -200,7 +163,7 @@ func LinesOf(fault Fault) []string {
 
 	var lines []string
 
-	lines = append(lines, fault.Error()+".")
+	lines = append(lines, ErrorOf(fault)+".")
 	lines = append(lines, "")
 
 	tmp := InfoLines(fault)
@@ -227,10 +190,12 @@ func Is(fault Fault, target Fault) bool {
 		return false
 	}
 
-	target_desc := target.Descriptor()
+	target_desc := DescriptorOf(target)
 
 	ok := Traverse(fault, func(f Fault) bool {
-		if f == target || f.Descriptor() == target_desc {
+		f_desc := DescriptorOf(f)
+
+		if f == target || f_desc == target_desc {
 			return true
 		}
 

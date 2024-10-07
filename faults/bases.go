@@ -118,10 +118,10 @@ func Join(faults ...flt.Fault) flt.Fault {
 	}
 
 	// 2. Get the highest level of severity.
-	highest := faults[0].Level()
+	highest := flt.LevelOf(faults[0])
 
 	for _, fault := range faults[1:] {
-		level := fault.Level()
+		level := flt.LevelOf(fault)
 
 		if level > highest {
 			highest = level

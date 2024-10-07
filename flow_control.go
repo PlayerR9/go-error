@@ -20,7 +20,16 @@ func get_base(fault Fault) *baseFault {
 	return nil
 }
 
-func SetSuggestions(fault Fault, suggestions ...string) {
+// SetSuggestions sets the fault's suggestions; ignoring any empty suggestions.
+//
+// Parameters:
+//   - fault: The fault to set the suggestions for.
+//   - suggestions: The suggestions to set.
+//
+// Returns:
+//   - bool: True if the suggestions were set, false otherwise. It only returns false
+//     when there is at least one non-empty suggestion and the fault is nil.
+func SetSuggestions(fault Fault, suggestions ...string) bool {
 	var count int
 
 	for i := 0; i < len(suggestions); i++ {
@@ -30,11 +39,11 @@ func SetSuggestions(fault Fault, suggestions ...string) {
 	}
 
 	if count == 0 {
-		return
+		return true
 	}
 
 	if fault == nil {
-		panic("TODO: Handle nil fault")
+		return false
 	}
 
 	base := get_base(fault)
@@ -42,11 +51,17 @@ func SetSuggestions(fault Fault, suggestions ...string) {
 		panic(BadConstruction.Init())
 	}
 
+	filtered := make([]string, 0, count)
+
 	for i := 0; i < len(suggestions); i++ {
 		if suggestions[i] != "" {
-			base.suggestions = append(base.suggestions, suggestions[i])
+			filtered = append(filtered, suggestions[i])
 		}
 	}
+
+	base.suggestions = append(base.suggestions, filtered...)
+
+	return true
 }
 
 // Throw adds a stack trace's frame to the fault and returns the fault.
@@ -58,7 +73,7 @@ func SetSuggestions(fault Fault, suggestions ...string) {
 //   - Fault: The fault. Returns nil if the fault is nil.
 func Throw(fault Fault, frame string) Fault {
 	if fault == nil {
-		panic("TODO: Handle nil fault")
+		return nil
 	}
 
 	base := get_base(fault)
